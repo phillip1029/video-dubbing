@@ -122,8 +122,12 @@ def start_processing():
         if not video_path or not target_language:
             return jsonify({'error': 'Missing required parameters'}), 400
         
-        # Create pipeline
-        pipeline = pipeline_manager.create_pipeline()
+        # Check for resume
+        session_id = data.get('session_id')
+        resume = bool(session_id)
+
+        # Create or get pipeline
+        pipeline = pipeline_manager.get_or_create_pipeline(session_id=session_id, resume=resume)
         session_id = pipeline.session_id
         
         # Generate output path
@@ -133,8 +137,17 @@ def start_processing():
         # Start processing in background thread
         def process_video():
             try:
+                # If resuming, need original video path from state
+                if resume:
+                    video_path_from_state = pipeline.pipeline_state.get("metadata", {}).get("input_video")
+                    if not video_path_from_state:
+                        raise ValueError("Could not find original video path in saved state for resume.")
+                    final_video_path = video_path_from_state
+                else:
+                    final_video_path = video_path
+
                 result = pipeline.process_video(
-                    video_path=video_path,
+                    video_path=final_video_path,
                     target_language=target_language,
                     output_path=output_path,
                     speaker_reference=speaker_reference,
@@ -162,7 +175,7 @@ def start_processing():
         return jsonify({
             'success': True,
             'session_id': session_id,
-            'message': 'Processing started'
+            'message': 'Processing started' if not resume else 'Processing resumed'
         })
     
     except Exception as e:

@@ -20,9 +20,29 @@ if __name__ == '__main__':
     os.makedirs('output', exist_ok=True)
     os.makedirs('temp', exist_ok=True)
     os.makedirs('models', exist_ok=True)
+    os.makedirs('logs', exist_ok=True)
     
-    print("Starting Video Dubbing Web Application...")
-    print("Access the application at: http://localhost:5000")
+    # Get configuration from environment
+    host = os.getenv('HOST', '0.0.0.0')
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    
+    # RunPod environment detection
+    is_runpod = os.getenv('RUNPOD_POD_ID') is not None
+    if is_runpod:
+        print(f"🚀 Starting Video Dubbing Application on RunPod")
+        print(f"Pod ID: {os.getenv('RUNPOD_POD_ID')}")
+        print(f"Public IP: {os.getenv('RUNPOD_PUBLIC_IP', 'Not available')}")
+        print(f"Access URL: http://{os.getenv('RUNPOD_PUBLIC_IP', 'localhost')}:{port}")
+    else:
+        print("Starting Video Dubbing Web Application...")
+        print(f"Access the application at: http://localhost:{port}")
     
     # Start the web application
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(
+        app, 
+        debug=debug, 
+        host=host, 
+        port=port,
+        allow_unsafe_werkzeug=True
+    )

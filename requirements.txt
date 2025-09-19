@@ -13,7 +13,6 @@ coqui-tts[all]
 
 # Translation
 openai>=1.12.0
-googletrans==4.0.0rc1
 transformers>=4.30.0
 
 # Video/Audio processing
@@ -45,6 +44,12 @@ requests
 python-dotenv
 pyyaml
 click
+
+# RunPod deployment
+runpod>=1.0.0
+gunicorn>=20.1.0
+eventlet>=0.33.0
+psutil>=5.9.0
 
 # Development
 pytest

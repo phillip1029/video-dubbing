@@ -1,5 +1,14 @@
 # Video Dubbing Application Configuration
 
+# ASR Configuration
+asr:
+  service: "openai_api"     # whisperx, openai_api
+  model_size: "large-v3"    # For whisperx
+  api_key: null             # For openai_api, or set OPENAI_API_KEY env var
+  split_long_audio: true
+  split_threshold_min: 20
+  split_chunk_duration_min: 30
+
 # WhisperX Configuration
 whisperx:
   model_size: "large-v3"  # tiny, base, small, medium, large-v2, large-v3
@@ -33,6 +42,7 @@ musetalk:
 # Video Processing Configuration
 video:
   temp_dir: "temp"
+  sessions_dir: "sessions"
   output_dir: "output"
   video_codec: "libx264"
   audio_codec: "aac"

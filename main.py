@@ -164,6 +164,8 @@ Examples:
                                help='Output video file path (auto-generated if not specified)')
     process_parser.add_argument('-s', '--speaker-reference',
                                help='Reference audio file for voice cloning')
+    process_parser.add_argument('--resume', type=str,
+                               help='Session ID to resume a previous run')
     
     # Web command
     web_parser = subparsers.add_parser('web', help='Start web interface')

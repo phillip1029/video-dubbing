@@ -9,11 +9,6 @@ import json
 
 # Translation services
 try:
-    from googletrans import Translator as GoogleTranslator
-except ImportError:
-    GoogleTranslator = None
-
-try:
     from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 except ImportError:
     pipeline = None
@@ -39,40 +34,6 @@ class BaseTranslator(ABC):
     def detect_language(self, text: str) -> str:
         """Detect the language of the text."""
         pass
-
-
-class GoogleTranslationService(BaseTranslator):
-    """Google Translate service implementation."""
-    
-    def __init__(self):
-        if GoogleTranslator is None:
-            raise ImportError("googletrans package is required for Google translation")
-        
-        self.translator = GoogleTranslator()
-        self.logger = logging.getLogger(__name__)
-    
-    def translate(self, text: str, target_language: str, 
-                 source_language: str = "auto") -> str:
-        """Translate text using Google Translate."""
-        try:
-            result = self.translator.translate(
-                text, 
-                dest=target_language, 
-                src=source_language
-            )
-            return result.text
-        except Exception as e:
-            self.logger.error(f"Google translation failed: {e}")
-            raise
-    
-    def detect_language(self, text: str) -> str:
-        """Detect language using Google Translate."""
-        try:
-            result = self.translator.detect(text)
-            return result.lang
-        except Exception as e:
-            self.logger.error(f"Language detection failed: {e}")
-            return "unknown"
 
 
 class OpenAITranslationService(BaseTranslator):
@@ -467,8 +428,6 @@ class TranslationProcessor:
                 raise ValueError("OpenAI API key is required for OpenAI translation service")
             model_name = self.config.model_name or "gpt-4o"
             return OpenAITranslationService(self.config.api_key, model_name)
-        elif self.config.service == "google":
-            return GoogleTranslationService()
         elif self.config.service == "huggingface":
             model_name = self.config.model_name or "facebook/mbart-large-50-many-to-many-mmt"
             return HuggingFaceTranslationService(model_name)

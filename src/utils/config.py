@@ -1,9 +1,25 @@
 """Configuration management for video dubbing application."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import yaml
+
+
+@dataclass
+class ASRConfig:
+    """Configuration for ASR."""
+    service: str = "whisperx"  # whisperx, openai_api
+    model_size: str = "large-v3"
+    device: str = "auto"
+    compute_type: str = "float16"
+    batch_size: int = 16
+    chunk_size: int = 30
+    return_char_alignments: bool = True
+    api_key: Optional[str] = None
+    split_long_audio: bool = True
+    split_threshold_min: int = 20
+    split_chunk_duration_min: int = 30
 
 
 @dataclass
@@ -49,6 +65,7 @@ class MuseTalkConfig:
 class VideoConfig:
     """Configuration for video processing."""
     temp_dir: str = "temp"
+    sessions_dir: str = "sessions"
     output_dir: str = "output"
     video_codec: str = "libx264"
     audio_codec: str = "aac"
@@ -58,11 +75,12 @@ class VideoConfig:
 @dataclass
 class AppConfig:
     """Main application configuration."""
-    whisperx: WhisperXConfig = WhisperXConfig()
-    translation: TranslationConfig = TranslationConfig()
-    tts: TTSConfig = TTSConfig()
-    musetalk: MuseTalkConfig = MuseTalkConfig()
-    video: VideoConfig = VideoConfig()
+    asr: ASRConfig = field(default_factory=ASRConfig)
+    whisperx: WhisperXConfig = field(default_factory=WhisperXConfig)
+    translation: TranslationConfig = field(default_factory=TranslationConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
+    musetalk: MuseTalkConfig = field(default_factory=MuseTalkConfig)
+    video: VideoConfig = field(default_factory=VideoConfig)
     
     supported_languages: Dict[str, str] = None
     
@@ -101,6 +119,12 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             config.translation.api_key = trans_config.get('api_key', config.translation.api_key)
             config.translation.max_chunk_size = trans_config.get('max_chunk_size', config.translation.max_chunk_size)
         
+        if 'asr' in config_dict:
+            asr_config = config_dict['asr']
+            config.asr.service = asr_config.get('service', config.asr.service)
+            config.asr.model_size = asr_config.get('model_size', config.asr.model_size)
+            config.asr.api_key = asr_config.get('api_key', config.asr.api_key)
+
         if 'whisperx' in config_dict:
             whisper_config = config_dict['whisperx']
             config.whisperx.model_size = whisper_config.get('model_size', config.whisperx.model_size)
@@ -118,6 +142,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     # Override with environment variables if available
     if os.getenv('OPENAI_API_KEY'):
         config.translation.api_key = os.getenv('OPENAI_API_KEY')
+        config.asr.api_key = os.getenv('OPENAI_API_KEY')
     
     return config
 

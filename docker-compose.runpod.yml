@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  video-dubbing:
+    build: .
+    container_name: video-dubbing-runpod
+    ports:
+      - "5000:5000"
+      - "8080:8080"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - RUNPOD_POD_ID=${RUNPOD_POD_ID:-local}
+      - RUNPOD_PUBLIC_IP=${RUNPOD_PUBLIC_IP:-localhost}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HOST=0.0.0.0
+      - PORT=5000
+    volumes:
+      - ./models:/workspace/models
+      - ./temp:/workspace/temp
+      - ./output:/workspace/output
+      - ./uploads:/workspace/uploads
+      - ./logs:/workspace/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: ["/workspace/start.sh", "web"]
+
+  # Optional: API-only service for serverless mode
+  video-dubbing-api:
+    build: .
+    container_name: video-dubbing-api
+    ports:
+      - "8080:8080"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - RUNPOD_POD_ID=${RUNPOD_POD_ID:-local}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./models:/workspace/models
+      - ./temp:/workspace/temp
+      - ./output:/workspace/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    command: ["/workspace/start.sh", "api"]
+    profiles: ["api"]

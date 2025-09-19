@@ -1,0 +1,83 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Application Data - DO NOT COMMIT SENSITIVE OR LARGE FILES
+# ----------------------------------------------------------
+# Session data, intermediate files, and state
+sessions/
+
+# Temporary processing files
+temp/
+
+# Final dubbed videos
+output/
+
+# User-uploaded source videos and reference audio
+uploads/
+
+# Log files
+logs/
+*.log
+
+# Downloaded AI models (these are large and should be downloaded on setup)
+models/
+
+# Environment file with secrets
+.env
+.env.*
+env.example
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Large media files (to prevent accidental commits)
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.m4a
+
+# RunPod secrets
+runpod.env

@@ -1,0 +1,84 @@
+# Dockerignore for Video Dubbing Application
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Application specific
+temp/
+output/
+uploads/
+logs/
+models/
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Large files
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wav
+*.mp3
+*.m4a
+
+# Documentation
+*.md
+docs/
+
+# Testing
+tests/
+pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Node modules (if any)
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp

@@ -2,13 +2,15 @@
 
 import os
 import subprocess
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import ffmpeg
 import cv2
 import librosa
 import soundfile as sf
 import numpy as np
 from pathlib import Path
+from pydub import AudioSegment
+import logging
 
 
 class VideoProcessor:
@@ -17,6 +19,7 @@ class VideoProcessor:
     def __init__(self, temp_dir: str = "temp"):
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        self.logger = logging.getLogger(__name__)
     
     def extract_audio(self, video_path: str, audio_path: Optional[str] = None) -> str:
         """Extract audio from video file."""
@@ -63,7 +66,8 @@ class VideoProcessor:
                 info['audio'] = {
                     'sample_rate': int(audio_stream['sample_rate']),
                     'channels': int(audio_stream['channels']),
-                    'codec': audio_stream['codec_name']
+                    'codec': audio_stream['codec_name'],
+                    'duration': float(audio_stream.get('duration', probe['format']['duration']))
                 }
             
             return info
@@ -89,6 +93,40 @@ class VideoProcessor:
         audio_path = self.extract_audio(video_path, audio_path)
         
         return video_only_path, audio_path
+
+    def get_audio_duration(self, audio_path: str) -> float:
+        """Get audio duration in seconds."""
+        try:
+            audio = AudioSegment.from_file(audio_path)
+            return len(audio) / 1000.0
+        except Exception as e:
+            self.logger.warning(f"Pydub failed to get duration for {audio_path}: {e}, trying ffprobe.")
+            try:
+                probe = ffmpeg.probe(audio_path)
+                return float(probe['format']['duration'])
+            except ffmpeg.Error as e:
+                self.logger.error(f"Failed to get audio duration with ffprobe: {e}")
+                return 0.0
+
+    def split_audio(self, audio_path: str, chunk_duration_min: int = 30, output_dir: Optional[str] = None) -> List[str]:
+        """Split audio into chunks of specified duration."""
+        output_dir_path = Path(output_dir) if output_dir else self.temp_dir
+        output_dir_path.mkdir(exist_ok=True)
+
+        self.logger.info(f"Splitting audio file: {audio_path}")
+        audio = AudioSegment.from_file(audio_path)
+        chunk_duration_ms = chunk_duration_min * 60 * 1000
+        chunks = []
+        
+        audio_name = Path(audio_path).stem
+        
+        for i, chunk in enumerate(audio[::chunk_duration_ms]):
+            chunk_path = str(output_dir_path / f"{audio_name}_chunk_{i:03d}.wav")
+            self.logger.info(f"Exporting chunk {i}: {chunk_path}")
+            chunk.export(chunk_path, format="wav")
+            chunks.append(chunk_path)
+            
+        return chunks
     
     def merge_video_audio(self, video_path: str, audio_path: str, 
                          output_path: str, video_codec: str = "libx264",
