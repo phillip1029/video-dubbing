@@ -1,0 +1,64 @@
+# Video Dubbing Application Configuration
+
+# WhisperX Configuration
+whisperx:
+  model_size: "large-v3"  # tiny, base, small, medium, large-v2, large-v3
+  device: "auto"          # auto, cuda, cpu
+  compute_type: "float16" # float16, int8, float32
+  batch_size: 16
+  chunk_size: 30
+  return_char_alignments: true
+
+# Translation Configuration
+translation:
+  service: "openai"       # openai, google, huggingface
+  model_name: "gpt-4o"    # For OpenAI: gpt-4o, gpt-4, gpt-3.5-turbo; For HuggingFace: facebook/mbart-large-50-many-to-many-mmt
+  api_key: null          # Required for OpenAI API (set as environment variable OPENAI_API_KEY)
+  max_chunk_size: 1000
+
+# Coqui TTS Configuration
+tts:
+  model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
+  device: "auto"          # auto, cuda, cpu
+  language: "en"
+  speed: 1.0
+
+# MuseTalk Configuration
+musetalk:
+  model_path: "models/musetalk"
+  device: "auto"          # auto, cuda, cpu
+  fps: 25
+  resolution: [512, 512]
+
+# Video Processing Configuration
+video:
+  temp_dir: "temp"
+  output_dir: "output"
+  video_codec: "libx264"
+  audio_codec: "aac"
+  audio_bitrate: "128k"
+
+# Application Settings
+app:
+  cleanup_temp_files: false  # Set to true to auto-cleanup temp files
+  max_file_size: 524288000   # 500MB in bytes
+  
+# Supported Languages
+supported_languages:
+  en: "English"
+  es: "Spanish"
+  fr: "French"
+  de: "German"
+  it: "Italian"
+  pt: "Portuguese"
+  ru: "Russian"
+  ja: "Japanese"
+  ko: "Korean"
+  zh: "Chinese"
+  ar: "Arabic"
+  hi: "Hindi"
+  nl: "Dutch"
+  pl: "Polish"
+  tr: "Turkish"
+  cs: "Czech"
+  hu: "Hungarian"

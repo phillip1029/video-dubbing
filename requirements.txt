@@ -1,0 +1,52 @@
+# Core dependencies
+torch>=2.0.0
+torchaudio>=2.0.0
+torchvision>=0.15.0
+
+# WhisperX for ASR and alignment
+whisperx
+openai-whisper
+faster-whisper
+
+# Coqui TTS for text-to-speech
+coqui-tts[all]
+
+# Translation
+openai>=1.12.0
+googletrans==4.0.0rc1
+transformers>=4.30.0
+
+# Video/Audio processing
+ffmpeg-python
+opencv-python
+librosa
+soundfile
+pydub
+moviepy
+
+# MuseTalk dependencies
+face-alignment
+scipy
+scikit-image
+pillow
+imageio
+imageio-ffmpeg
+
+# Web interface
+flask
+flask-cors
+flask-socketio
+
+# Utilities
+numpy
+pandas
+tqdm
+requests
+python-dotenv
+pyyaml
+click
+
+# Development
+pytest
+black
+flake8

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Dubbing Application</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-video me-2"></i>
+                Video Dubbing
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Upload Section -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-upload me-2"></i>
+                            Upload Video
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <!-- Video Upload -->
+                            <div class="mb-3">
+                                <label for="videoFile" class="form-label">Video File</label>
+                                <input type="file" class="form-control" id="videoFile" name="video" 
+                                       accept="video/*" required>
+                                <div class="form-text">
+                                    Supported formats: MP4, AVI, MOV, MKV (Max: 500MB)
+                                </div>
+                            </div>
+
+                            <!-- Language Selection -->
+                            <div class="mb-3">
+                                <label for="targetLanguage" class="form-label">Target Language</label>
+                                <select class="form-select" id="targetLanguage" required>
+                                    <option value="">Select target language...</option>
+                                </select>
+                            </div>
+
+                            <!-- Reference Audio (Optional) -->
+                            <div class="mb-3">
+                                <label for="referenceAudio" class="form-label">
+                                    Reference Audio (Optional)
+                                    <i class="fas fa-info-circle text-muted" 
+                                       title="Upload a sample of the target voice for voice cloning"></i>
+                                </label>
+                                <input type="file" class="form-control" id="referenceAudio" 
+                                       name="reference" accept="audio/*">
+                                <div class="form-text">
+                                    For voice cloning: WAV, MP3, M4A (10-30 seconds recommended)
+                                </div>
+                            </div>
+
+                            <!-- Processing Options -->
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           id="autoApprove" checked>
+                                    <label class="form-check-label" for="autoApprove">
+                                        Auto-approve translations (skip review step)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button type="submit" class="btn btn-primary btn-lg w-100" id="startButton">
+                                <i class="fas fa-play me-2"></i>
+                                Start Dubbing
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Section -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tasks me-2"></i>
+                            Processing Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="statusContainer" class="d-none">
+                            <!-- Session Info -->
+                            <div class="mb-3">
+                                <small class="text-muted">Session ID: <span id="sessionId"></span></small>
+                            </div>
+
+                            <!-- Overall Progress -->
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Overall Progress</span>
+                                    <span id="overallProgress">0%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" id="overallProgressBar" 
+                                         role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Stage Progress -->
+                            <div id="stageProgress">
+                                <!-- Stages will be populated dynamically -->
+                            </div>
+
+                            <!-- Current Stage -->
+                            <div class="alert alert-info" id="currentStage">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                Initializing...
+                            </div>
+
+                            <!-- Download Section -->
+                            <div id="downloadSection" class="d-none">
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    Dubbing completed successfully!
+                                </div>
+                                <button class="btn btn-success btn-lg w-100" id="downloadButton">
+                                    <i class="fas fa-download me-2"></i>
+                                    Download Dubbed Video
+                                </button>
+                            </div>
+
+                            <!-- Error Section -->
+                            <div id="errorSection" class="d-none">
+                                <div class="alert alert-danger">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <span id="errorMessage"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Initial State -->
+                        <div id="initialState">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-cloud-upload-alt fa-3x mb-3"></i>
+                                <p>Upload a video to start the dubbing process</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Review Modal -->
+        <div class="modal fade" id="reviewModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-edit me-2"></i>
+                            Review Translations
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="reviewContent">
+                            <!-- Review content will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" id="approveAllButton">
+                            <i class="fas fa-check me-2"></i>
+                            Approve All & Continue
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
