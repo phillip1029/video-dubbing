@@ -338,6 +338,11 @@ class VideoDubbingPipeline:
             detected_language_code = get_language_code(detected_language_name)
             self.logger.info(f"Language name '{detected_language_name}' converted to code: '{detected_language_code}' for subsequent API calls.")
 
+            # Add first chunk's text and update offset
+            full_text.append(self.asr_processor.get_full_text(first_chunk_result))
+            chunk_duration = self.video_processor.get_audio_duration(audio_chunks[0])
+            time_offset += chunk_duration
+            
             # Process remaining chunks with the detected language code
             for i, chunk_path in enumerate(audio_chunks[1:], start=2):
                 self.logger.info(f"Processing chunk {i}/{len(audio_chunks)}: {chunk_path}")
@@ -345,8 +350,6 @@ class VideoDubbingPipeline:
                 chunk_result = self.asr_processor.process_audio(chunk_path, language_code=detected_language_code)
                 
                 # Offset the timestamps of the new segments
-                offset = (i - 1) * chunk_duration_ms / 1000
-
                 for segment in chunk_result.get("segments", []):
                     segment["start"] += time_offset
                     segment["end"] += time_offset
@@ -363,7 +366,7 @@ class VideoDubbingPipeline:
                 time_offset += chunk_duration
             
             final_result = {
-                "language": detected_language,
+                "language": detected_language_name,  # Use the detected name
                 "text": " ".join(full_text),
                 "segments": all_segments
             }
