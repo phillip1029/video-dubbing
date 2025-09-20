@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 import ffmpeg
 import cv2
 import librosa
@@ -11,6 +11,7 @@ import numpy as np
 from pathlib import Path
 from pydub import AudioSegment
 import logging
+import math
 
 
 class VideoProcessor:
@@ -21,23 +22,29 @@ class VideoProcessor:
         self.temp_dir.mkdir(exist_ok=True)
         self.logger = logging.getLogger(__name__)
     
-    def extract_audio(self, video_path: str, audio_path: Optional[str] = None) -> str:
-        """Extract audio from video file."""
+    def extract_audio(self, video_path: str, audio_path: Optional[str] = None, acodec: str = 'pcm_s16le', ar: str = '16000', **kwargs) -> str:
+        """Extract audio from video file with specified codec."""
         if audio_path is None:
+            ext = "wav" if acodec == 'pcm_s16le' else "m4a"
             video_name = Path(video_path).stem
-            audio_path = str(self.temp_dir / f"{video_name}_audio.wav")
+            audio_path = str(self.temp_dir / f"{video_name}_audio.{ext}")
         
         try:
-            (
-                ffmpeg
-                .input(video_path)
-                .output(audio_path, acodec='pcm_s16le', ac=1, ar='16000')
-                .overwrite_output()
-                .run(quiet=True)
-            )
+            output_params = {
+                'acodec': acodec,
+                'ac': 1,
+                'ar': ar,
+                **kwargs
+            }
+            stream = ffmpeg.input(video_path).audio
+            stream = ffmpeg.output(stream, audio_path, **output_params)
+            ffmpeg.run(stream, capture_stdout=True, capture_stderr=True, overwrite_output=True)
+            
+            self.logger.info(f"Extracted audio to {audio_path}")
             return audio_path
         except ffmpeg.Error as e:
-            raise RuntimeError(f"Failed to extract audio: {e}")
+            self.logger.error(f"Failed to extract audio: {e.stderr.decode()}")
+            raise RuntimeError(f"Failed to extract audio: {e.stderr.decode()}")
     
     def get_video_info(self, video_path: str) -> dict:
         """Get video information using ffprobe."""
@@ -78,7 +85,7 @@ class VideoProcessor:
         """Split video into separate video and audio files."""
         video_name = Path(video_path).stem
         video_only_path = str(self.temp_dir / f"{video_name}_video_only.mp4")
-        audio_path = str(self.temp_dir / f"{video_name}_audio.wav")
+        audio_path = str(self.temp_dir / f"{video_name}_audio.m4a")
         
         # Extract video without audio
         (
@@ -108,25 +115,91 @@ class VideoProcessor:
                 self.logger.error(f"Failed to get audio duration with ffprobe: {e}")
                 return 0.0
 
-    def split_audio(self, audio_path: str, chunk_duration_min: int = 30, output_dir: Optional[str] = None) -> List[str]:
-        """Split audio into chunks of specified duration."""
+    def split_audio(self, audio_path: str, target_chunk_size_mb: Optional[float] = None, chunk_duration_min: int = 15, output_dir: Optional[str] = None) -> List[str]:
+        """Split audio into chunks based on size or duration."""
         output_dir_path = Path(output_dir) if output_dir else self.temp_dir
         output_dir_path.mkdir(exist_ok=True)
-
         self.logger.info(f"Splitting audio file: {audio_path}")
+
         audio = AudioSegment.from_file(audio_path)
-        chunk_duration_ms = chunk_duration_min * 60 * 1000
-        chunks = []
-        
-        audio_name = Path(audio_path).stem
-        
-        for i, chunk in enumerate(audio[::chunk_duration_ms]):
-            chunk_path = str(output_dir_path / f"{audio_name}_chunk_{i:03d}.wav")
-            self.logger.info(f"Exporting chunk {i}: {chunk_path}")
-            chunk.export(chunk_path, format="wav")
-            chunks.append(chunk_path)
+        duration_ms = len(audio)
+        input_filename = os.path.splitext(os.path.basename(audio_path))[0]
+        input_format = os.path.splitext(audio_path)[1].lstrip('.')
+
+        # If target_chunk_size_mb is provided, calculate chunk_duration_ms based on bitrate
+        if target_chunk_size_mb is not None:
+            bitrate_kbps = self.get_audio_bitrate(audio_path) / 1000
+            if bitrate_kbps > 0:
+                target_chunk_size_kb = target_chunk_size_mb * 1024
+                # Duration (s) = Size (kb) / Bitrate (kbps)
+                chunk_duration_s = target_chunk_size_kb / bitrate_kbps
+                chunk_duration_ms = int(chunk_duration_s * 1000)
+                self.logger.info(f"Calculated chunk duration for {target_chunk_size_mb}MB target: {chunk_duration_s:.1f}s")
+            else:
+                self.logger.warning("Could not determine bitrate. Falling back to duration-based split.")
+                chunk_duration_ms = chunk_duration_min * 60 * 1000
+        else:
+             chunk_duration_ms = chunk_duration_min * 60 * 1000
+
+        chunk_paths = []
+        for i, start_ms in enumerate(range(0, duration_ms, chunk_duration_ms)):
+            end_ms = start_ms + chunk_duration_ms
+            chunk = audio[start_ms:end_ms]
             
-        return chunks
+            chunk_filename = f"{input_filename}_chunk_{i:03d}.{input_format}"
+            chunk_path = os.path.join(output_dir_path, chunk_filename)
+            
+            self.logger.info(f"Exporting chunk {i}: {chunk_path}")
+            
+            # Explicitly handle m4a format with the correct codec
+            if input_format == 'm4a':
+                chunk.export(chunk_path, format="ipod", codec="aac")
+            else:
+                chunk.export(chunk_path, format=input_format)
+
+            chunk_paths.append(chunk_path)
+            
+        return chunk_paths
+
+    def get_audio_bitrate(self, audio_path: str) -> int:
+        """Get audio bitrate in bits per second."""
+        try:
+            self.logger.info(f"Probing for audio bitrate: {audio_path}")
+            probe = ffmpeg.probe(audio_path)
+            # Find the audio stream and get the bit_rate
+            audio_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'audio'), None)
+            if audio_stream and 'bit_rate' in audio_stream:
+                bitrate = int(audio_stream['bit_rate'])
+                self.logger.info(f"Detected bitrate: {bitrate / 1000:.0f} kbps")
+                return bitrate
+            self.logger.warning("Bitrate not found in audio stream.")
+            return 0
+        except ffmpeg.Error as e:
+            self.logger.error(f"Failed to probe audio bitrate: {e.stderr}")
+            return 0
+        except Exception as e:
+            self.logger.error(f"An unexpected error occurred during bitrate probing: {e}")
+            return 0
+
+    def get_audio_info(self, audio_path: str) -> Dict:
+        """
+        Get audio information using ffprobe.
+        """
+        try:
+            probe = ffmpeg.probe(audio_path)
+            audio_stream = next((stream for stream in probe['streams'] 
+                               if stream['codec_type'] == 'audio'), None)
+            
+            info = {
+                'sample_rate': int(audio_stream['sample_rate']),
+                'channels': int(audio_stream['channels']),
+                'codec': audio_stream['codec_name'],
+                'duration': float(audio_stream.get('duration', probe['format']['duration']))
+            }
+            
+            return info
+        except ffmpeg.Error as e:
+            raise RuntimeError(f"Failed to get audio info: {e}")
     
     def merge_video_audio(self, video_path: str, audio_path: str, 
                          output_path: str, video_codec: str = "libx264",

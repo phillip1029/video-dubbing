@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import json
 
@@ -14,15 +14,17 @@ from ..asr import WhisperXProcessor, OpenAIWhisperAPIProcessor
 from ..translation import TranslationProcessor, TranslationReviewManager
 from ..tts import CoquiTTSProcessor
 from ..lip_sync import MuseTalkProcessor
+from ..utils.languages import get_language_code
 
 
 class VideoDubbingPipeline:
     """Complete video dubbing pipeline."""
     
-    def __init__(self, config: AppConfig, session_id: Optional[str] = None, resume: bool = False):
+    def __init__(self, config: AppConfig, session_id: Optional[str] = None, resume: bool = False, source_language: str = None):
         self.config = config
         self.session_id = session_id or str(uuid.uuid4())
         self.resume = resume
+        self.source_language = source_language
         
         self.session_dir = Path(self.config.video.sessions_dir) / self.session_id
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -47,6 +49,14 @@ class VideoDubbingPipeline:
         
         # Pipeline state
         self.pipeline_state = self._load_or_initialize_state()
+
+    def _get_video_info(self, video_path: str) -> Dict:
+        """Get video information and store it in state."""
+        self.logger.info("Getting video information")
+        video_info = self.video_processor.get_video_info(video_path)
+        self.pipeline_state["files"]["video_info"] = video_info
+        self._save_state()
+        return video_info
     
     def _load_or_initialize_state(self) -> Dict:
         """Load state from file if resuming, otherwise initialize a new state."""
@@ -99,19 +109,18 @@ class VideoDubbingPipeline:
 
             self.pipeline_state["status"] = "running"
             
-            # Stage 1: Extract audio and get video info
-            if self.pipeline_state["stages"]["asr"]["status"] != "completed":
+            # Stage 1: Get video info
+            if "video_info" not in self.pipeline_state["files"]:
                 self._update_stage("asr", "running", 0.1)
-                audio_path, video_info = self._extract_audio_and_info(video_path)
+                video_info = self._get_video_info(video_path)
             else:
-                self.logger.info("Skipping audio extraction (already complete).")
-                audio_path = self.pipeline_state["files"]["original_audio"]
+                self.logger.info("Skipping video info check (already complete).")
                 video_info = self.pipeline_state["files"]["video_info"]
 
             # Stage 2: Speech recognition and alignment
             if self.pipeline_state["stages"]["asr"]["status"] != "completed":
                 self._update_stage("asr", "running", 0.3)
-                transcript_result = self._perform_asr(audio_path)
+                transcript_result = self._perform_asr(video_path)
                 self._update_stage("asr", "completed", 1.0)
             else:
                 self.logger.info("Skipping ASR (already complete).")
@@ -248,42 +257,97 @@ class VideoDubbingPipeline:
         self.pipeline_state["files"]["original_audio"] = str(audio_path)
         self.pipeline_state["files"]["video_info"] = video_info
         
-        self._update_stage("asr", "running", 0.5)
-        return audio_path, video_info
+        return str(audio_path), video_info
     
-    def _perform_asr(self, audio_path: str) -> Dict:
+    def _perform_asr(self, video_path: str) -> Dict:
         """Perform automatic speech recognition."""
-        self.logger.info("Performing speech recognition and alignment")
+        self.logger.info("--- Starting ASR Stage ---")
 
-        duration_sec = self.video_processor.get_audio_duration(audio_path)
+        # Determine audio format based on ASR service
+        if self.config.asr.service == "openai_api":
+            audio_codec = "aac"
+            audio_format = "m4a"
+        else:
+            audio_codec = "pcm_s16le"
+            audio_format = "wav"
+
+        audio_path = self.session_dir / f"original_audio.{audio_format}"
+
+        # --- Audio Extraction ---
+        if not audio_path.exists():
+            self.logger.info(f"Extracting audio to '{audio_path.name}' (format: {audio_format})")
+            self.video_processor.extract_audio(
+                video_path,
+                str(audio_path),
+                acodec=audio_codec
+            )
+        else:
+            self.logger.info(f"Using existing audio file: {audio_path.name}")
+        
+        self.pipeline_state["files"]["original_audio"] = str(audio_path)
+        
+        # --- Pre-transcription Checks & Splitting Logic ---
+        OPENAI_API_LIMIT_BYTES = 20 * 1024 * 1024
+        
+        should_split = False
+        reason = ""
+
+        if isinstance(self.asr_processor, OpenAIWhisperAPIProcessor):
+            audio_size = os.path.getsize(audio_path)
+            self.logger.info(f"Checking audio file size: {audio_size / 1024**2:.2f}MB. API limit is {OPENAI_API_LIMIT_BYTES / 1024**2:.2f}MB.")
+            if audio_size >= OPENAI_API_LIMIT_BYTES:
+                reason = f"File size ({audio_size / 1024**2:.2f}MB) exceeds API limit."
+                should_split = True
+
+        if not should_split and self.config.asr.split_long_audio:
+            duration_sec = self.video_processor.get_audio_duration(audio_path)
+            threshold_sec = self.config.asr.split_threshold_min * 60
+            self.logger.info(f"Checking audio duration: {duration_sec/60:.2f} minutes. Splitting threshold is {self.config.asr.split_threshold_min} minutes.")
+            if duration_sec > threshold_sec:
+                reason = f"Duration ({duration_sec/60:.2f}min) exceeds threshold ({self.config.asr.split_threshold_min}min)."
+                should_split = True
         
         final_result = {}
 
-        if self.config.asr.split_long_audio and duration_sec > self.config.asr.split_threshold_min * 60:
-            self.logger.info(f"Audio is long ({duration_sec/60:.1f} min), splitting into {self.config.asr.split_chunk_duration_min}-min chunks.")
+        if should_split:
+            self.logger.info(f"Splitting required: {reason}")
             
-            chunk_output_dir = Path(self.config.video.temp_dir) / f"chunks_{self.session_id}"
+            chunk_output_dir = self.session_dir / "audio_chunks"
+            
             audio_chunks = self.video_processor.split_audio(
                 audio_path, 
-                chunk_duration_min=self.config.asr.split_chunk_duration_min, 
+                target_chunk_size_mb=20.0, # Target 24MB to be safe
                 output_dir=str(chunk_output_dir)
             )
             
+            self.logger.info(f"Successfully split audio into {len(audio_chunks)} chunks.")
             all_segments = []
             full_text = []
             detected_language = "auto"
             
             time_offset = 0.0
 
-            for i, chunk_path in enumerate(audio_chunks):
-                self.logger.info(f"Processing chunk {i+1}/{len(audio_chunks)}: {chunk_path}")
-                result = self.asr_processor.process_audio(chunk_path, language_code=detected_language)
+            # Process the first chunk to detect language
+            first_chunk_result = self.asr_processor.process_audio(audio_chunks[0], language_code="auto")
+            all_segments.extend(first_chunk_result.get("segments", []))
+            
+            # Language detection and code conversion
+            detected_language_name = first_chunk_result.get("language", "en")
+            self.logger.info(f"Detected language from first chunk: {detected_language_name}")
+            
+            detected_language_code = get_language_code(detected_language_name)
+            self.logger.info(f"Language name '{detected_language_name}' converted to code: '{detected_language_code}' for subsequent API calls.")
 
-                if i == 0 and detected_language == "auto":
-                    detected_language = result.get("language", "en")
-                    self.logger.info(f"Detected language from first chunk: {detected_language}")
+            # Process remaining chunks with the detected language code
+            for i, chunk_path in enumerate(audio_chunks[1:], start=2):
+                self.logger.info(f"Processing chunk {i}/{len(audio_chunks)}: {chunk_path}")
+                # Use the detected language code for subsequent chunks
+                chunk_result = self.asr_processor.process_audio(chunk_path, language_code=detected_language_code)
+                
+                # Offset the timestamps of the new segments
+                offset = (i - 1) * chunk_duration_ms / 1000
 
-                for segment in result.get("segments", []):
+                for segment in chunk_result.get("segments", []):
                     segment["start"] += time_offset
                     segment["end"] += time_offset
                     for word in segment.get("words", []):
@@ -293,7 +357,7 @@ class VideoDubbingPipeline:
                             word["end"] += time_offset
                     all_segments.append(segment)
                 
-                full_text.append(self.asr_processor.get_full_text(result))
+                full_text.append(self.asr_processor.get_full_text(chunk_result))
                 
                 chunk_duration = self.video_processor.get_audio_duration(chunk_path)
                 time_offset += chunk_duration
@@ -305,8 +369,10 @@ class VideoDubbingPipeline:
             }
 
         else:
+            self.logger.info("No splitting required. Processing whole audio file.")
             final_result = self.asr_processor.process_audio(audio_path)
 
+        self.logger.info("--- Finished ASR Stage ---")
         # Save transcript
         transcript_path = self.session_dir / "transcript.json"
         self.asr_processor.save_transcript(final_result, str(transcript_path))
